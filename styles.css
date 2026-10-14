@@ -1,804 +1,256 @@
-/* ===== MD Reader (paginated horizontal reader) ===== */
+/* ===== MD Journal — fixed-size pages you write on ===== */
 
-/* Host view: remove default padding, fill the leaf.
-   Scoped, high-specificity selector so it wins without !important. */
-.workspace-leaf-content[data-type="horizontal-reader-view"] .view-content.hr-view-content {
+.workspace-leaf-content[data-type="md-journal-view"] .view-content.mj-view-content {
   padding: 0;
   height: 100%;
   overflow: hidden;
 }
 
-/* Окно просмотра: фиксированный размер, прячет переполнение,
-   листание делаем сами через transform — НЕ через scroll */
-.hr-viewport {
+/* Colours. The theme set is the default; tints override it locally, so only the
+   journal changes and the rest of Obsidian keeps its theme. */
+.mj-root {
+  --mj-desk: var(--background-secondary);
+  --mj-paper: var(--background-primary);
+  --mj-ink: var(--text-normal);
+  --mj-muted: var(--text-muted);
+  --mj-faint: var(--text-faint);
+  --mj-rule: var(--background-modifier-border);
+  --mj-accent: var(--text-accent);
+  --mj-hl: rgba(255, 208, 0, 0.35);
+  --mj-shade: rgba(0, 0, 0, 0.16);
   position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
   display: flex;
-  align-items: stretch;
-  justify-content: center;
-  background: var(--background-primary);
-  outline: none;
-  /* по вертикали разрешаем нативный жест, горизонталь обрабатываем сами */
-  touch-action: pan-y;
-  -webkit-user-select: text;
-  user-select: text;
+  flex-direction: column;
+  height: 100%;
+  overflow: clip;
+  background: var(--mj-desk);
 }
+.mj-root.mj-tint-white { --mj-desk: #d8d5cf; --mj-paper: #fffdf9; --mj-ink: #26231f; --mj-muted: #6d6860; --mj-faint: #a39d93; --mj-rule: rgba(64, 96, 150, 0.2); --mj-accent: #36598a; }
+.mj-root.mj-tint-cream { --mj-desk: #cdc4b1; --mj-paper: #fbf6ea; --mj-ink: #3b352c; --mj-muted: #73695a; --mj-faint: #a69c89; --mj-rule: rgba(125, 102, 60, 0.22); --mj-accent: #80582a; }
+.mj-root.mj-tint-sepia { --mj-desk: #b9a888; --mj-paper: #f3e9d2; --mj-ink: #473b2e; --mj-muted: #7a6a55; --mj-faint: #a49078; --mj-rule: rgba(125, 90, 45, 0.25); --mj-accent: #8a5a2b; }
+.mj-root.mj-tint-gray { --mj-desk: #b9b9b4; --mj-paper: #ecece9; --mj-ink: #33363a; --mj-muted: #686b6f; --mj-faint: #96999c; --mj-rule: rgba(0, 0, 0, 0.12); --mj-accent: #45606e; }
+.mj-root.mj-tint-night { --mj-desk: #060607; --mj-paper: #17171b; --mj-ink: #b6b1a8; --mj-muted: #7a756d; --mj-faint: #4f4c47; --mj-rule: rgba(255, 255, 255, 0.07); --mj-accent: #93a7b9; --mj-hl: rgba(200, 160, 0, 0.3); --mj-shade: rgba(0, 0, 0, 0.5); }
 
-/* ===== Тонировка страницы =====
-   Переменные темы переопределяем ЛОКАЛЬНО на вьюпорте — так за цветом тянется всё
-   внутри ридера (фон, текст, корешок, полоса прогресса), а остальной Obsidian
-   остаётся в своей теме. Классы вешает JS по настройке. */
-.hr-viewport.hr-tint-sepia {
-  --background-primary: #f4ecd8;
-  --background-primary-alt: #efe4ca;
-  --background-secondary: #efe4ca;
-  --background-modifier-border: #ddceac;
-  --text-normal: #4a3f33;
-  --text-muted: #7a6a55;
-  --text-faint: #a08d74;
-  --text-accent: #8a5a2b;
-  --interactive-accent: #b08150;
-}
-.hr-viewport.hr-tint-cream {
-  --background-primary: #fbf6ea;
-  --background-primary-alt: #f4eddc;
-  --background-secondary: #f4eddc;
-  --background-modifier-border: #e4dac2;
-  --text-normal: #3f3a31;
-  --text-muted: #736c5e;
-  --text-faint: #9c9484;
-  --text-accent: #7c6a3f;
-  --interactive-accent: #b9a267;
-}
-.hr-viewport.hr-tint-gray {
-  --background-primary: #e9e9e6;
-  --background-primary-alt: #e0e0dc;
-  --background-secondary: #e0e0dc;
-  --background-modifier-border: #cdcdc8;
-  --text-normal: #35383a;
-  --text-muted: #6a6d70;
-  --text-faint: #94979a;
-  --text-accent: #4a6572;
-  --interactive-accent: #7f949e;
-}
-.hr-viewport.hr-tint-night {
-  --background-primary: #0c0c0e;
-  --background-primary-alt: #141417;
-  --background-secondary: #141417;
-  --background-modifier-border: #26262b;
-  --text-normal: #a6a29b;
-  --text-muted: #6e6a64;
-  --text-faint: #4b4844;
-  --text-accent: #8a9aa8;
-  --interactive-accent: #566470;
-}
-/* Заголовки некоторых тем красятся своими переменными — в тонировке возвращаем
-   их к цвету основного текста, иначе они «светятся» чужим цветом на бумаге */
-.hr-viewport.hr-tinted .hr-content h1,
-.hr-viewport.hr-tinted .hr-content h2,
-.hr-viewport.hr-tinted .hr-content h3,
-.hr-viewport.hr-tinted .hr-content h4,
-.hr-viewport.hr-tinted .hr-content h5,
-.hr-viewport.hr-tinted .hr-content h6 { color: var(--text-normal); }
-.hr-viewport.hr-tinted .hr-content a { color: var(--text-accent); }
-
-/* «Вуаль» яркости: затемняет всё окно чтения, не влияя на раскладку.
-   opacity задаёт JS (0 = полная яркость) */
-.hr-dimmer {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  background: #000;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-/* «Сцена» — книга: центрируется, её ширину задаёт JS (1 или 2 страницы) */
-.hr-stage {
+/* ----- the desk and the book ----- */
+.mj-viewport {
   position: relative;
-  box-sizing: border-box;
-  height: 100%;
-  width: 100%;
-  margin: 0 auto;
-  /* КЛЮЧЕВОЕ: обрезаем лишние колонки по краю книги, а не по краю окна,
-     иначе на широком экране соседние страницы «затекают» в поля по бокам */
-  overflow: hidden;
-}
-
-/* «Корешок» между двумя страницами в режиме разворота */
-.hr-stage.hr-two::after {
-  content: '';
-  position: absolute;
-  top: 1.6em;
-  bottom: 2.2em;
-  left: 50%;
-  width: 1px;
-  transform: translateX(-0.5px);
-  background: var(--background-modifier-border);
-  pointer-events: none;
-}
-
-/* Поток текста в колонки. Ширину контента и колонки задаёт JS (в px). */
-.hr-content {
-  box-sizing: border-box;
-  height: 100%;
-  width: auto;             /* перезаписывается из JS */
-  padding: 1.4em 0 2em;
-  column-width: auto;      /* перезаписывается из JS */
-  column-gap: var(--hr-col-gap, 2.5em);
-  /* ВАЖНО: auto, иначе колонки балансируются и пагинация ломается */
-  column-fill: auto;
-
-  font-family: var(--hr-font-family, var(--font-text));
-  font-size: var(--hr-font-size, var(--font-text-size));
-  line-height: var(--hr-line-height, 1.6);
-  color: var(--text-normal);
-
-  will-change: transform;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-}
-
-.hr-content > :first-child { margin-top: 0; }
-
-/* Выравнивание по ширине (класс вешает JS по настройке). Переносы включаем там,
-   где платформа их умеет; где нет — просто justify с чуть большими пробелами.
-   Заголовки и подписи не растягиваем. */
-.hr-content.hr-justify p,
-.hr-content.hr-justify li {
-  text-align: justify;
-  -webkit-hyphens: auto;
-  hyphens: auto;
-}
-
-/* Заголовок заметки на первой странице (если включено) */
-.hr-title {
-  font-size: 1.5em;
-  font-weight: 700;
-  line-height: 1.2;
-  margin: 0 0 0.8em 0;
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--background-modifier-border);
-  break-after: avoid;
-  break-inside: avoid;
-}
-
-/* --- Контроль разрывов: не резать МЕЛКИЕ неделимые элементы между страницами.
-   НЕ включаем потенциально высокие контейнеры (ul/ol/pre/blockquote/table/.callout):
-   если такой блок выше колонки, break-inside:avoid не даёт ему разорваться, и хвост
-   уходит под обрез .hr-stage overflow:hidden — часть контента пропадает совсем. --- */
-.hr-content img,
-.hr-content svg,
-.hr-content figure,
-.hr-content audio,
-.hr-content video,
-.hr-content .math-block {
-  break-inside: avoid;
-  -webkit-column-break-inside: avoid;
-}
-
-.hr-content h1, .hr-content h2, .hr-content h3,
-.hr-content h4, .hr-content h5, .hr-content h6 {
-  break-after: avoid;
-  break-inside: avoid;
-}
-
-/* --- Не дать широким/высоким элементам выйти за страницу --- */
-.hr-content img,
-.hr-content svg,
-.hr-content canvas,
-.hr-content iframe,
-.hr-content video {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  height: auto;
-}
-.hr-content audio {
-  width: 100%;
-  max-width: 100%;
-}
-/* Код и таблицы — переносить, а не уезжать вбок (иначе ломается счёт страниц) */
-.hr-content pre,
-.hr-content code {
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  max-width: 100%;
-}
-.hr-content table {
-  table-layout: fixed;
-  width: 100%;
-  max-width: 100%;
-}
-.hr-content td, .hr-content th { overflow-wrap: anywhere; }
-
-/* ===== Элементы интерфейса поверх страницы ===== */
-
-/* Кнопки назад/вперёд (десктоп, появляются при наведении) */
-.hr-nav-btn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 5;
-  width: 2em;
-  height: 3.2em;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: clip;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.4em;
-  line-height: 1;
-  color: var(--text-muted);
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m, 6px);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s ease, color 0.15s ease;
-  box-shadow: var(--shadow-s);
+  touch-action: pan-y pinch-zoom;
 }
-.hr-nav-btn.hr-prev { left: 8px; }
-.hr-nav-btn.hr-next { right: 8px; }
-.hr-nav-btn:hover { color: var(--text-normal); }
-
-/* Показывать кнопки только на устройствах с мышью и при наведении */
-@media (hover: hover) and (pointer: fine) {
-  .hr-viewport:hover .hr-nav-btn { opacity: 0.85; }
-}
-
-/* ===== Библиотека (модалка) ===== */
-/* «Продолжить» — во всю ширину: это главная кнопка окна */
-.hr-lib-continue {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6em;
-  width: 100%;
-  margin-bottom: 10px;
-  text-align: left;
-}
-.hr-lib-continue-label { flex: none; font-weight: 600; }
-.hr-lib-continue-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0.85;
-}
-.hr-lib-filter {
-  width: 100%;
-  margin-bottom: 8px;
-}
-.hr-lib-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-}
-.hr-lib-list {
-  max-height: 60vh;
-  overflow-y: auto;
-}
-.hr-lib-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-m, 6px);
-  cursor: pointer;
-}
-.hr-lib-row:hover { background: var(--background-secondary); }
-.hr-lib-main {
-  flex: 1;
-  min-width: 0;
-}
-.hr-lib-head {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6em;
-}
-.hr-lib-title {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hr-lib-tag {
-  flex: none;
-  font-size: 0.7em;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-faint);
-}
-.hr-lib-pct {
-  flex: none;
-  font-size: 0.8em;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-/* полоска прочитанного: видно с одного взгляда, где какая книга */
-.hr-lib-bar {
-  height: 2px;
-  margin-top: 5px;
-  background: var(--background-modifier-border);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.hr-lib-bar-fill {
-  height: 100%;
-  background: var(--interactive-accent);
-}
-.hr-lib-x {
-  flex: none;
-  color: var(--text-faint);
-  padding: 0 4px;
-  cursor: pointer;
-}
-.hr-lib-x:hover { color: var(--text-error); }
-.hr-lib-empty {
-  color: var(--text-muted);
-  text-align: center;
-  padding: 1.5em 0;
-}
-.hr-note-pick-path {
-  font-size: 0.75em;
-  color: var(--text-faint);
-}
-
-/* Подсветка найденного места на странице (снимается при следующем поиске) */
-.hr-content .hr-hit {
-  background: var(--text-highlight-bg, rgba(255, 208, 0, 0.4));
-  border-radius: 3px;
-  padding: 0 1px;
-}
-
-/* Строка результата поиска: фрагмент текста + процент по книге */
-.hr-hit-item { display: flex; align-items: baseline; gap: 0.6em; }
-.hr-hit-item .hr-hit-text {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.9em;
-}
-.hr-hit-item .hr-hit-match {
-  background: var(--text-highlight-bg, rgba(255, 208, 0, 0.4));
-  border-radius: 3px;
-}
-.hr-hit-item .hr-hit-pct,
-.hr-bm-item .hr-bm-pct {
-  flex: none;
-  font-size: 0.75em;
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Строка закладки: процент + подпись + крестик */
-.hr-bm-item { display: flex; align-items: baseline; gap: 0.6em; }
-.hr-bm-item .hr-bm-label {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hr-bm-item .hr-bm-x {
-  flex: none;
-  color: var(--text-faint);
-  padding: 0 4px;
-  cursor: pointer;
-}
-.hr-bm-item .hr-bm-x:hover { color: var(--text-error); }
-
-/* Пункт оглавления во всплывающем списке: бейдж уровня + текст */
-.hr-toc-item { display: flex; align-items: baseline; gap: 0.55em; }
-.hr-toc-item .hr-toc-level {
-  flex: none;
-  font-size: 0.7em;
-  font-weight: 600;
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
-}
-.hr-toc-item .hr-toc-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Нижняя панель: прогресс + «страница X / N» */
-.hr-statusbar {
+.mj-book { position: relative; flex: none; }
+.mj-stage {
   position: absolute;
   left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 14px 8px;
-  background: linear-gradient(to top, var(--background-primary) 35%, transparent);
-  pointer-events: none;
+  top: 0;
+  transform-origin: 0 0;
+  overflow: clip;
+  border-radius: 3px;
+  background: var(--mj-paper);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 14px 34px rgba(0, 0, 0, 0.22);
 }
-/* Полоса прогресса — она же перемотка по книге. Сама полоса в 3 пиксела, пальцем
-   в неё не попасть, поэтому указатель ловит обёртка с отступами сверху и снизу.
-   touch-action: none — иначе браузер решит, что горизонтальную протяжку он разберёт сам */
-.hr-scrub {
-  /* ловим палец сверху, где над полосой всё равно пустой градиент; вниз лезем
-     только на промежуток до строки статуса — иначе съели бы верх её букв,
-     а по ней открывают меню навигации */
-  padding: 10px 0 4px;
-  margin: -10px 0 -4px;
-  pointer-events: auto;
-  cursor: pointer;
-  touch-action: none;
-}
-.hr-progress {
-  height: 3px;
-  width: 100%;
-  background: var(--background-modifier-border);
-  border-radius: 2px;
-  overflow: hidden;
-}
-/* во время протяжки полоса заметно толще — через transform, а не height:
-   высота сдвинула бы вниз строку статуса прямо под пальцем.
-   И без плавности: заполнение должно идти ровно за пальцем, а не догонять его */
-.hr-scrub.is-scrubbing .hr-progress { transform: scaleY(1.8); }
-.hr-scrub.is-scrubbing .hr-progress-fill { transition: none; }
-/* заполнение тянем через scaleX: width — свойство раскладки, и её анимация
-   пересчитывалась бы браузером все 200 мс каждого перелистывания */
-.hr-progress-fill {
-  height: 100%;
-  width: 100%;
-  background: var(--interactive-accent);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 0.2s ease;
-}
-/* Текст статуса кликабелен (открывает оглавление): у панели pointer-events:none,
-   на тексте включаем обратно; ширина по контенту, чтобы не перехватывать тапы
-   листания по нижней полосе рядом с числом */
-.hr-status-text {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 0.5em;
-  text-align: center;
-  font-size: 0.75em;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  pointer-events: auto;
-  cursor: pointer;
-  width: fit-content;
-  max-width: 100%;
-  margin: 0 auto;
-  padding: 0 10px;
-}
-.hr-status-text:hover { color: var(--text-normal); }
-.hr-reader-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.hr-reader-tools .hr-status-text { flex: 1; flex-wrap: wrap; row-gap: 2px; min-width: 0; padding: 0; overflow: hidden; }
-.hr-reader-tools .hr-status-chapter { max-width: 100%; }
-.hr-reader-tools > button {
-  flex: none;
-  min-height: 36px;
-  padding: 4px 10px;
-  pointer-events: auto;
-  color: var(--text-normal);
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  box-shadow: none;
-}
-.hr-reader-tools > button:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
-.hr-reader-tools > .hr-reader-quote[hidden] { display: none; }
-/* Reading indicators can be hidden independently. Menu and appearance stay
-   available even with every progress indicator turned off. */
-.hr-viewport.hr-no-progress .hr-scrub,
-.hr-viewport.hr-no-position .hr-status-pos,
-.hr-viewport.hr-no-position .hr-status-bm,
-.hr-viewport.hr-no-chapter .hr-status-chapter,
-.hr-viewport.hr-no-time .hr-status-left { display: none; }
-.hr-viewport.hr-no-position.hr-no-chapter.hr-no-time .hr-status-text {
-  visibility: hidden;
-  pointer-events: none;
-}
-@media (pointer: coarse) {
-  .hr-reader-tools > button { min-height: 44px; min-width: 44px; }
-}
-.hr-ap-hint { color: var(--text-muted); margin-bottom: 12px; font-size: var(--font-ui-small); }
-.hr-ap-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-.hr-ap-reset { margin-top: 12px; }
-.hr-ap .setting-item-info { min-width: 0; }
-.hr-ap .setting-item-control { min-width: 0; flex-shrink: 1; }
-.hr-ap select { max-width: 100%; }
-/* Leave the book visible while adjusting it; the native modal still owns
-   focus, Escape and outside-click dismissal. */
-.modal-container:has(.hr-ap) .modal-bg { opacity: 0.12; }
-.modal-container:has(.hr-ap) .modal {
-  position: absolute;
-  right: 16px;
-  width: min(380px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
-}
-@media (max-width: 600px) {
-  .modal-container:has(.hr-ap) .modal {
-    right: 8px;
-    bottom: 8px;
-    width: calc(100vw - 16px);
-    max-height: 60vh;
-  }
-}
-/* название главы уступает место проценту: длинное — обрезаем многоточием */
-.hr-status-chapter {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hr-status-bm,
-.hr-status-pos { flex: none; }
-/* «сколько осталось» — подсказка, а не показание: тише процента */
-.hr-status-left {
-  flex: none;
-  color: var(--text-faint);
-}
-/* узлы строки состояния живут постоянно, пустые не должны занимать место */
-.hr-status-text > span:empty { display: none; }
+.mj-track { position: absolute; left: 0; top: 0; height: 100%; will-change: transform; }
 
-/* Hide our own controls (center tap). Equal specificity + later source
-   order win over the hover rule, so no !important needed. */
-.hr-viewport.hr-hide-ui .hr-ui {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-.hr-ui { transition: opacity 0.2s ease; }
-
-/* ===== Отбивка «Конец» на последней странице ===== */
-.hr-end {
-  position: absolute;
-  inset: 0;
-  z-index: 6;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1.2em;
-  animation: hr-end-in 0.15s ease;
-}
-/* фон отдельным слоем, а не цветом с прозрачностью: color-mix есть не во всех
-   мобильных webview, а opacity на самом блоке пригасила бы и кнопки */
-.hr-end::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--background-primary);
-  opacity: 0.9;
-}
-.hr-end > * { position: relative; }
-@keyframes hr-end-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.hr-end-title {
-  font-size: 1.6em;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-.hr-end-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-/* ===== Панель «Оформление» ===== */
-.hr-ap-size {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 0 14px;
-}
-.hr-ap-name { flex: 1; }
-.hr-ap-value {
-  flex: none;
-  min-width: 3.4em;
-  text-align: center;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-/* кнопки размера — крупные: их жмут пальцем, часто на ходу */
-.hr-ap-step {
-  flex: none;
-  width: 2.6em;
-  height: 2.6em;
-  line-height: 1;
-  font-family: var(--font-text);
-}
-.hr-ap-small { font-size: 0.85em; }
-.hr-ap-big { font-size: 1.35em; }
-
-.hr-ap-tints {
-  display: flex;
-  gap: 10px;
-  padding-bottom: 14px;
-  flex-wrap: wrap;
-}
-.hr-ap-tint {
-  width: 2.2em;
-  height: 2.2em;
-  padding: 0;
-  border-radius: 50%;
-  border: 2px solid var(--background-modifier-border);
-  cursor: pointer;
-}
-.hr-ap-tint.is-active {
-  border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 2px var(--background-modifier-border-hover);
-}
-/* Swatches are color samples, not ordinary themed buttons. Keep their exact
-   fill even when host/theme button rules add a background or hover gradient. */
-.hr-ap .hr-ap-tints button.hr-ap-tint {
-  background: var(--hr-swatch) !important;
-}
-.hr-ap-tint-none { --hr-swatch: var(--background-primary); }
-.hr-ap-tint-sepia { --hr-swatch: #f4ecd8; }
-.hr-ap-tint-cream { --hr-swatch: #fbf6ea; }
-.hr-ap-tint-gray { --hr-swatch: #e9e9e6; }
-.hr-ap-tint-night { --hr-swatch: #0c0c0e; }
-/* в модалке настроечные строки без рамки сверху выглядят опрятнее */
-.hr-ap .setting-item { padding: 8px 0; }
-
-/* Пустое состояние */
-.hr-empty {
-  margin: auto;
-  color: var(--text-muted);
-  text-align: center;
-  font-size: 0.9em;
-}
-
-/* ===== Immersive reading: hide Obsidian's own chrome =====
-   The plugin toggles body classes: hr-immersive (mode on) +
-   hr-chrome-hidden (chrome hidden; toggled by a center tap).
-   !important is intentional below: we override Obsidian's own header /
-   mobile navbar / status bar, whose display is controlled by the app's
-   own (and sometimes higher-specificity) rules. */
-
-/* верхняя шапка именно вкладки ридера */
-body.hr-immersive.hr-chrome-hidden
-  .workspace-leaf-content[data-type="horizontal-reader-view"] .view-header {
-  display: none !important;
-}
-/* Recent phone layouts put the safe area into the header/content spacing
-   instead of the root. Reserve it once at the root while our header overlays
-   the book, keeping both text and controls clear of the system status bar. */
-body.is-phone.hr-immersive .workspace > .mod-root {
-  padding-top: var(--safe-area-inset-top, 0px);
-}
-/* Keep the phone reading area stable when controls are toggled. */
-body.is-phone.hr-immersive
-  .workspace-leaf-content[data-type="horizontal-reader-view"] {
-  --view-top-spacing: 0px;
-}
-body.is-phone.hr-immersive
-  .workspace-leaf-content[data-type="horizontal-reader-view"] .view-header {
+.mj-paper {
   position: absolute;
   top: 0;
-  margin-top: 0;
-  padding-top: 0;
-  z-index: 10;
-  background-color: var(--background-primary);
+  width: var(--mj-page-w);
+  height: var(--mj-page-h);
+  background: var(--mj-paper);
+  cursor: text;
 }
-/* Older/static mobile navigation must also overlay instead of shrinking the
-   workspace when it returns. Normal app layout resumes outside immersive mode. */
-body.is-phone.hr-immersive .mobile-navbar {
-  position: fixed;
-}
-/* вертикальная лента с иконками слева (и справа, если включена).
-   Настройка «сворачивать боковые панели» её не убирает: там сворачиваются
-   сами панели, а узкая лента остаётся на месте */
-body.hr-immersive.hr-chrome-hidden .workspace-ribbon {
-  display: none !important;
-}
-
-/* полоса вкладок ТОЙ группы, где открыт ридер (метку вешает JS — селектором
-   от body до нужной группы не добраться). Соседние группы не трогаем */
-body.hr-immersive.hr-chrome-hidden .hr-reader-tabs .workspace-tab-header-container {
-  display: none !important;
-}
-
-/* нижняя панель навигации на телефоне */
-body.hr-immersive.hr-chrome-hidden .mobile-navbar {
-  display: none !important;
-}
-/* нижняя строка состояния на десктопе (счётчик слов и т.п.) */
-body.hr-immersive.hr-chrome-hidden .status-bar {
-  display: none !important;
-}
-
-/* Верхний/нижний отступ страницы теперь задаёт настройка «Вертикальные поля»
-   (JS пишет padding инлайном, перебивая базовое правило на всех платформах).
-   Отступ под системную панель ОС (safe-area) держит сам Obsidian на родителе;
-   если включить «Прятать системную панель», уйдёт и он. */
-
-/* Когда системная панель ОС спрятана (моб.) — обнулить зарезервированный под неё
-   отступ safe-area, чтобы контент занял самый верх экрана. Переопределяем и переменную
-   Obsidian, и (на всякий случай) верхний паддинг корневых контейнеров. */
-body.hr-hide-sysbar {
-  --safe-area-inset-top: 0px !important;
-}
-body.hr-hide-sysbar .app-container,
-body.hr-hide-sysbar .workspace,
-body.hr-hide-sysbar .workspace-leaf-content[data-type="horizontal-reader-view"] {
-  padding-top: 0 !important;
-}
-
-/* ===== Сноски ===== */
-/* Маркер в тексте: номер-кнопка. Поле вокруг цифры — чтобы попадать пальцем,
-   строку почти не раздвигает (отрицательный margin съедает большую часть) */
-.hr-content sup.hr-fn {
-  padding: 0 0.25em;
-  margin: 0 -0.1em;
-  color: var(--text-accent);
-  font-weight: var(--font-semibold, 600);
-  cursor: pointer;
-  border-radius: var(--radius-s, 4px);
-}
-.hr-content sup.hr-fn:hover,
-.hr-content sup.hr-fn.is-active { background: var(--background-modifier-hover); }
-.hr-content sup.hr-fn:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
-
-/* Окно сноски. Координаты рядом с маркером задаёт JS; на узком окне — полоса снизу */
-.hr-fn-pop {
+.mj-rules {
   position: absolute;
-  z-index: 7;
-  width: min(26em, calc(100% - 16px));
-  max-height: 45%;
-  display: flex;
-  flex-direction: column;
-  font-family: var(--hr-font-family, var(--font-text));
-  color: var(--text-normal);
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m, 8px);
-  box-shadow: var(--shadow-l);
-  animation: hr-end-in 0.12s ease;
+  left: var(--mj-margin);
+  top: var(--mj-top);
+  width: var(--mj-col-w);
+  height: var(--mj-content-h);
+  pointer-events: none;
 }
-.hr-fn-pop.is-sheet {
-  left: 0;
-  right: 0;
+.mj-paper-ruled .mj-rules {
+  background-image: linear-gradient(to bottom, transparent calc(var(--mj-lh) - 1px), var(--mj-rule) calc(var(--mj-lh) - 1px));
+  background-size: 100% var(--mj-lh);
+}
+.mj-paper-dotted .mj-rules {
+  background-image: radial-gradient(circle, var(--mj-faint) 1px, transparent 1.4px);
+  background-size: var(--mj-lh) var(--mj-lh);
+  background-position: calc(var(--mj-lh) / -2) calc(var(--mj-lh) / 2);
+  opacity: 0.75;
+}
+.mj-paper-grid .mj-rules {
+  background-image:
+    linear-gradient(to bottom, transparent calc(var(--mj-lh) - 1px), var(--mj-rule) calc(var(--mj-lh) - 1px)),
+    linear-gradient(to right, transparent calc(var(--mj-lh) - 1px), var(--mj-rule) calc(var(--mj-lh) - 1px));
+  background-size: var(--mj-lh) var(--mj-lh);
+  border-top: 1px solid var(--mj-rule);
+  margin-top: -1px;
+}
+.mj-pnum {
+  position: absolute;
+  left: var(--mj-margin);
+  right: var(--mj-margin);
   bottom: 0;
-  width: auto;
-  max-height: 55%;
-  border-width: 1px 0 0;
-  border-radius: var(--radius-l, 12px) var(--radius-l, 12px) 0 0;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-.hr-fn-pop-head {
-  flex: none;
+  height: var(--mj-bottom);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 6px 0 14px;
-  font-size: var(--font-ui-small);
-  color: var(--text-muted);
+  justify-content: center;
+  font-family: var(--mj-font);
+  font-size: 11px;
+  color: var(--mj-faint);
+  pointer-events: none;
+  user-select: none;
 }
-.hr-fn-pop-close { font-size: 1.3em; line-height: 1; }
-.hr-fn-pop-body {
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 4px 14px 12px;
-  line-height: 1.5;
+.mj-paper-l .mj-pnum { justify-content: flex-start; }
+.mj-paper-r .mj-pnum { justify-content: flex-end; }
+.mj-no-pnum .mj-pnum { display: none; }
+
+/* the fold between the two pages of a spread */
+.mj-spine {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--mj-page-w) - 40px);
+  width: 80px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.035) 38%, var(--mj-shade) 50%, rgba(0, 0, 0, 0.035) 62%, transparent);
+}
+.mj-double .mj-spine { display: block; }
+
+/* ----- the writing surface: one column per page ----- */
+.mj-content {
+  position: absolute;
+  left: var(--mj-margin);
+  top: var(--mj-top);
+  height: var(--mj-content-h);
+  column-gap: calc(2 * var(--mj-margin));
+  column-fill: auto;
+  orphans: 1;
+  widows: 1;
+  outline: none;
+  font-family: var(--mj-font);
+  font-size: var(--mj-fs);
+  line-height: var(--mj-lh);
+  color: var(--mj-ink);
+  caret-color: var(--mj-accent);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  tab-size: 4;
+  font-variant-ligatures: common-ligatures;
   -webkit-user-select: text;
   user-select: text;
 }
-.hr-fn-pop-body > :first-child { margin-top: 0; }
-.hr-fn-pop-body > :last-child { margin-bottom: 0; }
-@media (pointer: coarse) {
-  .hr-fn-pop-close { min-width: 44px; min-height: 44px; }
+.mj-content ::selection { background: var(--text-selection, rgba(120, 140, 200, 0.3)); }
+
+/* Every line is a whole number of rulings tall, so text stays on the lines. */
+.mj-line { min-height: var(--mj-lh); margin: 0; padding: 0; orphans: 1; widows: 1; }
+.mj-line.mj-h1 { font-size: 1.7em; line-height: calc(2 * var(--mj-lh)); min-height: calc(2 * var(--mj-lh)); font-weight: 700; letter-spacing: -0.01em; }
+.mj-line.mj-h2 { font-size: 1.35em; line-height: calc(2 * var(--mj-lh)); min-height: calc(2 * var(--mj-lh)); font-weight: 650; }
+.mj-line.mj-h3 { font-size: 1.15em; font-weight: 650; }
+.mj-line.mj-h4 { font-weight: 650; }
+.mj-line.mj-h5, .mj-line.mj-h6 { font-weight: 650; color: var(--mj-muted); }
+.mj-h1-newpage .mj-line.mj-h1:not(:first-child) { break-before: column; }
+
+.mj-mark { color: var(--mj-faint); font-weight: normal; font-style: normal; }
+.mj-hide-syntax .mj-line:not(.mj-active) .mj-mark { display: none; }
+
+.mj-b { font-weight: 700; }
+.mj-i { font-style: italic; }
+.mj-s { text-decoration: line-through; }
+.mj-hlt { background: var(--mj-hl); border-radius: 2px; }
+.mj-ic { font-family: var(--font-monospace); font-size: 0.86em; line-height: 1; background: rgba(127, 127, 127, 0.13); border-radius: 3px; padding: 0 0.2em; }
+.mj-link { color: var(--mj-accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.mj-tag { color: var(--mj-accent); }
+
+/* List markers keep their width in both states, so bullets never jump. The
+   glyphs are zero-width inline boxes, not absolutely positioned: inside page
+   columns an absolute box at the foot of a page can be pushed to the next one. */
+.mj-bullet { color: transparent; }
+.mj-bullet::before { content: "•"; display: inline-block; width: 0; color: var(--mj-muted); }
+.mj-olmark { color: var(--mj-muted); }
+.mj-check { color: transparent; cursor: pointer; }
+.mj-check::before {
+  content: "";
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin: 0 -1.05em 0 0.15em;
+  vertical-align: -0.12em;
+  border: 1.5px solid var(--mj-muted);
+  border-radius: 3px;
+  box-sizing: border-box;
 }
+.mj-task-done .mj-check::before {
+  border-color: var(--mj-accent);
+  background: var(--mj-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.4 2.4 4.6-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% no-repeat;
+}
+.mj-line.mj-task-done { color: var(--mj-muted); }
+
+.mj-line.mj-quote { border-left: 2px solid var(--mj-rule); padding-left: 0.8em; color: var(--mj-muted); font-style: italic; }
+.mj-line.mj-hr { background: linear-gradient(var(--mj-faint), var(--mj-faint)) center / 30% 1px no-repeat; }
+.mj-hide-syntax .mj-line.mj-hr:not(.mj-active) .mj-hr-src { color: transparent; }
+.mj-line.mj-code, .mj-line.mj-fence { font-family: var(--font-monospace); font-size: 0.86em; background: rgba(127, 127, 127, 0.08); padding: 0 0.4em; }
+.mj-line.mj-fence { color: var(--mj-faint); }
+
+.mj-line.mj-pagebreak { break-after: column; color: var(--mj-faint); }
+.mj-hide-syntax .mj-line.mj-pagebreak:not(.mj-active)::after {
+  content: "· · ·  page break  · · ·";
+  display: block;
+  text-align: center;
+  font-size: 0.72em;
+  line-height: var(--mj-lh);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+.mj-img { display: block; max-width: 100%; object-fit: contain; border-radius: 2px; user-select: none; }
+.mj-imgsrc { color: var(--mj-faint); }
+.mj-hide-syntax .mj-line.mj-image:not(.mj-active) .mj-imgsrc { display: none; }
+
+.mj-content.mj-empty .mj-line:first-child::before {
+  content: "Start writing…";
+  position: absolute;
+  color: var(--mj-faint);
+  pointer-events: none;
+}
+
+/* ----- page bar ----- */
+.mj-bar {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 2px 12px 6px;
+  font-size: var(--font-ui-small, 13px);
+  color: var(--mj-muted);
+  user-select: none;
+}
+.mj-bar .mj-nav {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--mj-muted);
+  background: transparent;
+  box-shadow: none;
+  border: none;
+}
+.mj-bar .mj-nav:disabled { opacity: 0.3; cursor: default; }
+.mj-info { min-width: 9em; text-align: center; font-variant-numeric: tabular-nums; }
+.mj-meta {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-variant-numeric: tabular-nums;
+  color: var(--mj-faint);
+}
+@media (max-width: 560px) { .mj-meta { display: none; } }

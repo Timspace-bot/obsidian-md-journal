@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MD Journal harness</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    --font-text: Georgia, serif; --font-monospace: Consolas, monospace; --background-primary: #fff;
+    --background-secondary: #e9e9e9; --background-modifier-border: #ddd; --text-normal: #222; --text-muted: #666;
+    --text-faint: #999; --text-accent: #6b5d9c; font: 14px system-ui, sans-serif;
+  }
+  .workspace-leaf-content { height: 100vh; display: flex; flex-direction: column; }
+  .view-content { flex: 1; min-height: 0; }
+  #tools { position: fixed; left: 8px; top: 8px; z-index: 10; display: flex; gap: 6px; }
+</style>
+</head>
+<body>
+<div id="tools">
+  <select id="mode"><option value="auto">auto</option><option value="single">single</option><option value="double">double</option></select>
+  <select id="tint"><option>cream</option><option>white</option><option>sepia</option><option>gray</option><option>night</option><option>theme</option></select>
+  <select id="paper"><option>ruled</option><option>plain</option><option>dotted</option><option>grid</option></select>
+</div>
+<div class="workspace-leaf-content" data-type="md-journal-view">
+  <div class="view-content mj-view-content" id="host"></div>
+</div>
+<script>
+  // Minimal stand-in for the obsidian module: the editor itself needs none of it.
+  class Stub {}
+  window.module = { exports: {} };
+  window.require = () => new Proxy({ Platform: { isPhone: false } }, { get: (o, k) => (k in o ? o[k] : Stub) });
+</script>
+<script src="../main.js"></script>
+<script>
+  const J = module.exports;
+  const settings = Object.assign({}, J.DEFAULT_SETTINGS, { animate: true });
+  window.changes = 0;
+  const editor = new J.PagedEditor(document.getElementById('host'), {
+    onChange: () => { window.changes++; editor.setStatus('Edited'); },
+    resolveImage: (src) => src,
+    openLink: (href) => console.log('open', href),
+  }, settings);
+  const sample = [
+    '# Field notes',
+    '',
+    '## Monday, 12 October 2026',
+    '',
+    'Woke early. The light came in **sideways** through the kitchen window, and for a minute the whole room looked like an *old photograph*. Wrote three pages before coffee — which never happens.',
+    '',
+    '- [x] Post the letter to Ana',
+    '- [ ] Buy a new ink cartridge',
+    '- Ideas for the weekend:',
+    '\t- walk the canal path',
+    '\t- visit [[Grandma Notes|grandma]]',
+    '',
+    '> The days are long but the years are short.',
+    '',
+    'Some `code`, a ==highlight==, a ~~mistake~~ and a #journal tag.',
+    '',
+    '---',
+    '',
+    '## Tuesday',
+    '',
+  ].join('\n');
+  editor.setText(sample, { resetHistory: true, caret: { line: Infinity, ch: Infinity } });
+  window.editor = editor;
+  for (const id of ['mode', 'tint', 'paper']) {
+    document.getElementById(id).addEventListener('change', (e) => {
+      settings[id === 'mode' ? 'pageMode' : id] = e.target.value;
+      editor.configure(settings);
+    });
+  }
+</script>
+</body>
+</html>

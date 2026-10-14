@@ -1,10 +1,10 @@
 {
-  "id": "md-reader",
-  "name": "MD Reader",
-  "version": "2.1.0",
+  "id": "md-journal",
+  "name": "MD Journal",
+  "version": "0.1.0",
   "minAppVersion": "1.4.0",
-  "description": "Read your notes and books like an e-book: pages you flip sideways by swipe, tap or arrow keys, with a library, contents, search and bookmarks. Imports fb2, epub and txt to Markdown.",
-  "author": "mrrepac",
-  "authorUrl": "https://github.com/mrrepac",
+  "description": "Write in a book: fixed-size journal pages in a two-page spread, edited live, with text that flows onto the next page as you write.",
+  "author": "Timspace-bot",
+  "authorUrl": "https://github.com/Timspace-bot",
   "isDesktopOnly": false
 }
