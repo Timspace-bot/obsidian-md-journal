@@ -2,11 +2,15 @@
 
 Write in your Obsidian notes as if they were a paper journal.
 
-MD Journal shows a note as **fixed-size book pages**, one page or a two-page spread, and
-lets you **write directly on them**. When a page fills up, your words carry on at the top of
-the next page, mid-sentence if needed. When the spread is full, the book turns to a fresh
-one. Nothing scrolls. The pages are a real size (A5 by default), so a page break never moves
-when you resize the window. The book just scales to fit.
+MD Journal shows a note as **book pages**, one page or a two-page spread, and lets you
+**write directly on them**. When a page fills up, your words carry on at the top of the
+next page, mid-sentence if needed. When the spread is full, the book turns to a fresh one.
+Nothing scrolls.
+
+By default the pages wear your normal Obsidian theme. Turn on **Fixed page** to keep the
+same amount of text on every page whatever the window size: the page scales to fit instead
+of re-flowing, so page breaks stay put. For a paper notebook, switch the layout to
+**Journal pages**: ruled or dotted paper at a real size (A5 by default).
 
 The note stays ordinary Markdown. Whatever you type is saved to the file as you wrote it,
 and the regular editor, sync, search and links all keep working.
@@ -27,12 +31,16 @@ editable.
   theme's colours. Every line, headings included, takes a whole number of rulings, so the
   writing stays on the lines. Big headings sit in a blank band, like the title space of a
   journal page, so the ruling never runs through them.
-- **Obsidian view.** A second layout that looks like MD Reader: the columns fill the pane
-  in your theme's colours and font, with page buttons at the sides. It is still fully
-  editable and still flows onto the next page. The page is cut to fit the pane, so page
-  breaks move when you resize, and the view keeps the caret's place. Switch layouts with
-  the monitor button in the header, the **Switch between journal pages and Obsidian view**
-  command, or the **Layout** setting.
+- **Obsidian view (default).** Looks like MD Reader: the columns fill the pane in your
+  theme's colours and font, with page buttons at the sides, and it is fully editable. The
+  page is cut to fit the pane, so page breaks move when you resize, and the view keeps the
+  caret's place.
+- **Fixed page.** In the Obsidian view, this keeps the text area of a page constant (A5,
+  B5, A4 or a custom size, in your theme font). Resizing the window only scales the page,
+  so every page always holds the same text. Use the **Fixed page** setting or the
+  **Toggle fixed page** command.
+- **Journal pages.** The paper layout. Switch with the monitor button in the header, the
+  **Switch between journal pages and Obsidian view** command, or the **Layout** setting.
 - **Highlighted code blocks.** Fenced code with a language is coloured by Obsidian's own
   Prism, as in the reading view.
 - **Live preview.** `**bold**`, `*italic*`, headings, links, highlights and tags show as
@@ -79,6 +87,7 @@ editable.
 | Next page / Previous page | Turns the pages. |
 | Journal appearance | Page size, paper, colours and type. |
 | Switch between journal pages and Obsidian view | Toggles the layout. |
+| Toggle fixed page (Obsidian view) | Same text per page at any window size, or pages that fill the window. |
 
 ## Settings
 
@@ -89,8 +98,9 @@ editable.
 | Open in | New tab, current tab or split. |
 | Date heading format | Moment.js format used by *Insert date heading*. |
 | Spellcheck, page-turn animation | On or off. |
-| Layout | Journal pages (fixed size, on paper) or Obsidian view (columns fill the pane). |
-| Columns, max column width | Obsidian view only: one or two columns, and how wide they may get. |
+| Layout | Obsidian view in your theme (default) or journal pages on paper. |
+| Fixed page | Obsidian view: keep a constant page size (and text per page) and scale it to the window. |
+| Columns, max column width | Obsidian view: one or two columns, and how wide they may get (when not fixed). |
 | Page size | A6, B6, A5, half letter, B5, A4 or custom (mm). |
 | Pages | Auto, one page or two-page spread. |
 | Paper, paper colour | Ruled, dot grid, squared or plain; theme, white, cream, sepia, gray or night. |

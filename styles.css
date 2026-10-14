@@ -237,6 +237,8 @@
 .mj-root.mj-screen { --mj-desk: var(--background-primary); --mj-paper: transparent; }
 .mj-screen .mj-stage { background: transparent; box-shadow: none; border-radius: 0; }
 .mj-screen .mj-rules, .mj-screen .mj-spine { display: none; }
+/* fixed page in the theme view: a faint outline shows where the page ends */
+.mj-screen.mj-fixed .mj-stage { box-shadow: 0 0 0 1px var(--background-modifier-border); border-radius: 4px; }
 .mj-screen .mj-line.mj-code, .mj-screen .mj-line.mj-fence { background: var(--code-background, rgba(127, 127, 127, 0.08)); font-size: var(--code-size, 0.88em); }
 .mj-screen.mj-double .mj-paper-r::before {
   content: "";

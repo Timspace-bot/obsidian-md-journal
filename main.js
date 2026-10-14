@@ -44,11 +44,12 @@ const FONTS = {
 const PAPERS = { plain: 'Plain', ruled: 'Ruled', dotted: 'Dot grid', grid: 'Squared' };
 const TINTS = { theme: 'Theme colours', white: 'White', cream: 'Cream', sepia: 'Sepia', gray: 'Gray', night: 'Night' };
 
-const LAYOUTS = { journal: 'Journal pages (fixed size, on paper)', screen: 'Obsidian view (columns fill the pane)' };
+const LAYOUTS = { screen: 'Obsidian view (your theme)', journal: 'Journal pages (on paper)' };
 
 const DEFAULT_SETTINGS = {
-  layout: 'journal',      // 'journal' | 'screen'
+  layout: 'screen',       // 'screen' (the user's theme) | 'journal' (paper)
   screenMaxWidth: 760,    // px — widest column in the Obsidian view (0 = no limit)
+  fixedPage: false,       // Obsidian view: fixed text area per page, scaled to the window
   pageSize: 'a5',
   customWidth: 148,       // mm, when pageSize === 'custom'
   customHeight: 210,      // mm
@@ -559,8 +560,16 @@ class PagedEditor {
     this.content.spellcheck = settings.spellcheck !== false;
     this.geo = null;
     this.laidOut = false;
+    // A fixed page never depends on the window: same text per page, just scaled.
+    this.fixed = !this.screen || !!settings.fixedPage;
+    cls.toggle('mj-fixed', this.fixed);
     if (!this.screen) this.applyGeometry(pageGeometry(settings));
+    else if (this.fixed) this.applyGeometry(pageGeometry({ ...settings, fontSize: this.themeFontSize() }));
     this.layout();
+  }
+
+  themeFontSize() {
+    return parseFloat(getComputedStyle(this.root).getPropertyValue('--font-text-size')) || 16;
   }
 
   applyGeometry(g) {
@@ -589,9 +598,8 @@ class PagedEditor {
     let n;
     let scale;
     let reflowed = false;
-    if (this.screen) {
-      const fs = parseFloat(getComputedStyle(this.root).getPropertyValue('--font-text-size')) || 16;
-      const g = screenGeometry(vw, vh, this.settings, fs, phone);
+    if (!this.fixed) {
+      const g = screenGeometry(vw, vh, this.settings, this.themeFontSize(), phone);
       const old = this.geo;
       if (!old || old.W !== g.W || old.H !== g.H || old.colW !== g.colW || old.lh !== g.lh || old.fs !== g.fs) {
         this.applyGeometry(g);
@@ -603,7 +611,7 @@ class PagedEditor {
     } else {
       const g = this.geo;
       this.root.classList.remove('mj-narrow');
-      const pad = vw < 520 ? 8 : 28;
+      const pad = vw < 520 ? 8 : this.screen ? 52 : 28; // the theme view keeps room for its side buttons
       const aw = Math.max(50, vw - 2 * pad);
       const ah = Math.max(50, vh - 2 * pad);
       const single = Math.min(aw / g.W, ah / g.H);
@@ -1623,9 +1631,31 @@ function addAppearanceSettings(el, plugin, redisplay) {
     new Setting(el).setName('Columns').setDesc('Auto shows two columns when the pane is wide enough.')
       .addDropdown((d) => d.addOptions({ auto: 'Auto', single: 'One column', double: 'Two columns' })
         .setValue(s.pageMode).onChange(async (v) => { s.pageMode = v; await apply(); }));
-    new Setting(el).setName('Max column width').setDesc('Pixels. 0 = as wide as the pane allows.')
-      .addSlider((sl) => sl.setLimits(0, 1400, 20).setValue(s.screenMaxWidth).setDynamicTooltip()
-        .onChange(async (v) => { s.screenMaxWidth = v; await apply(); }));
+    new Setting(el).setName('Fixed page').setDesc('Every page holds the same amount of text whatever the window size: the page is scaled to fit instead of re-flowing, so page breaks stay put.')
+      .addToggle((t) => t.setValue(!!s.fixedPage).onChange(async (v) => { s.fixedPage = v; await apply(); redisplay(); }));
+    if (s.fixedPage) {
+      new Setting(el).setName('Page size')
+        .addDropdown((d) => {
+          for (const [k, v] of Object.entries(PAGE_SIZES)) d.addOption(k, v.label);
+          d.setValue(s.pageSize).onChange(async (v) => { s.pageSize = v; await apply(); redisplay(); });
+        });
+      if (s.pageSize === 'custom') {
+        new Setting(el).setName('Custom page size').setDesc('Width × height in millimetres.')
+          .addText((t) => t.setPlaceholder('148').setValue(String(s.customWidth)).onChange(async (v) => {
+            const n = Number(v); if (n >= 50 && n <= 420) { s.customWidth = n; await apply(); }
+          }))
+          .addText((t) => t.setPlaceholder('210').setValue(String(s.customHeight)).onChange(async (v) => {
+            const n = Number(v); if (n >= 50 && n <= 600) { s.customHeight = n; await apply(); }
+          }));
+      }
+      new Setting(el).setName('Margins').setDesc('Millimetres around the text on each page.')
+        .addSlider((sl) => sl.setLimits(4, 30, 1).setValue(s.margin).setDynamicTooltip()
+          .onChange(async (v) => { s.margin = v; await apply(); }));
+    } else {
+      new Setting(el).setName('Max column width').setDesc('Pixels. 0 = as wide as the pane allows.')
+        .addSlider((sl) => sl.setLimits(0, 1400, 20).setValue(s.screenMaxWidth).setDynamicTooltip()
+          .onChange(async (v) => { s.screenMaxWidth = v; await apply(); }));
+    }
     new Setting(el).setName('Line spacing')
       .addSlider((sl) => sl.setLimits(1.2, 2.4, 0.05).setValue(s.lineHeight).setDynamicTooltip()
         .onChange(async (v) => { s.lineHeight = v; await apply(); }));
@@ -1795,6 +1825,16 @@ class MdJournalPlugin extends Plugin {
     }
     this.addCommand({ id: 'appearance', name: 'Journal appearance', callback: () => new AppearanceModal(this.app, this).open() });
     this.addCommand({ id: 'toggle-layout', name: 'Switch between journal pages and Obsidian view', callback: () => this.toggleLayout() });
+    this.addCommand({
+      id: 'toggle-fixed-page',
+      name: 'Toggle fixed page (Obsidian view)',
+      callback: async () => {
+        this.settings.fixedPage = !this.settings.fixedPage;
+        await this.saveSettings();
+        this.refreshViews();
+        new Notice(this.settings.fixedPage ? 'MD Journal: fixed page — text per page stays the same when resizing' : 'MD Journal: pages fill the window');
+      },
+    });
 
     this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
       if (!(file instanceof TFile) || file.extension !== 'md') return;

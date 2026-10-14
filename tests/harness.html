@@ -27,7 +27,8 @@
 </head>
 <body>
 <div id="tools">
-  <select id="layout"><option value="journal">journal</option><option value="screen">obsidian view</option></select>
+  <select id="layout"><option value="screen">obsidian view</option><option value="journal">journal</option></select>
+  <label style="background:#fff8;padding:2px 4px"><input type="checkbox" id="fixed"> fixed page</label>
   <label style="background:#fff8;padding:2px 4px"><input type="checkbox" id="dark"> dark</label>
   <select id="mode"><option value="auto">auto</option><option value="single">single</option><option value="double">double</option></select>
   <select id="tint"><option>cream</option><option>white</option><option>sepia</option><option>gray</option><option>night</option><option>theme</option></select>
@@ -89,6 +90,7 @@
   ].join('\n');
   editor.setText(sample, { resetHistory: true, caret: { line: Infinity, ch: Infinity } });
   window.editor = editor;
+  document.getElementById('fixed').addEventListener('change', (e) => { settings.fixedPage = e.target.checked; editor.configure(settings); });
   document.getElementById('dark').addEventListener('change', (e) => { document.body.classList.toggle('dark', e.target.checked); editor.configure(settings); });
   for (const id of ['mode', 'tint', 'paper', 'layout']) {
     document.getElementById(id).addEventListener('change', (e) => {
