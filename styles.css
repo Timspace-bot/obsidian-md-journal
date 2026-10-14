@@ -154,6 +154,9 @@
 .mj-line.mj-h4 { font-weight: 650; }
 .mj-line.mj-h5, .mj-line.mj-h6 { font-weight: 650; color: var(--mj-muted); }
 .mj-h1-newpage .mj-line.mj-h1:not(:first-child) { break-before: column; }
+/* Big headings sit in a blank band, like the title space on a journal page,
+   instead of having the ruling run through the letters. */
+.mj-line.mj-h1, .mj-line.mj-h2 { background: var(--mj-paper); }
 
 .mj-mark { color: var(--mj-faint); font-weight: normal; font-style: normal; }
 .mj-hide-syntax .mj-line:not(.mj-active) .mj-mark { display: none; }
@@ -217,6 +220,51 @@
   color: var(--mj-faint);
   pointer-events: none;
 }
+
+/* code blocks highlighted by Obsidian's Prism, coloured by the theme */
+.mj-line.mj-code { color: var(--code-normal, var(--mj-ink)); }
+.mj-content .token.comment, .mj-content .token.prolog, .mj-content .token.doctype, .mj-content .token.cdata { color: var(--code-comment, var(--mj-faint)); }
+.mj-content .token.keyword, .mj-content .token.atrule, .mj-content .token.important { color: var(--code-keyword, #c678dd); }
+.mj-content .token.string, .mj-content .token.char, .mj-content .token.attr-value, .mj-content .token.regex, .mj-content .token.url { color: var(--code-string, #98c379); }
+.mj-content .token.function, .mj-content .token.class-name { color: var(--code-function, #e5c07b); }
+.mj-content .token.number, .mj-content .token.boolean, .mj-content .token.constant, .mj-content .token.symbol { color: var(--code-value, #d19a66); }
+.mj-content .token.operator, .mj-content .token.entity { color: var(--code-operator, #e06c75); }
+.mj-content .token.punctuation { color: var(--code-punctuation, var(--mj-muted)); }
+.mj-content .token.property, .mj-content .token.variable, .mj-content .token.builtin, .mj-content .token.namespace { color: var(--code-property, #61afef); }
+.mj-content .token.tag, .mj-content .token.selector, .mj-content .token.attr-name { color: var(--code-tag, #e06c75); }
+
+/* ----- Obsidian view: the pane is the page, in the theme, like MD Reader ----- */
+.mj-root.mj-screen { --mj-desk: var(--background-primary); --mj-paper: transparent; }
+.mj-screen .mj-stage { background: transparent; box-shadow: none; border-radius: 0; }
+.mj-screen .mj-rules, .mj-screen .mj-spine { display: none; }
+.mj-screen .mj-line.mj-code, .mj-screen .mj-line.mj-fence { background: var(--code-background, rgba(127, 127, 127, 0.08)); font-size: var(--code-size, 0.88em); }
+.mj-screen.mj-double .mj-paper-r::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--mj-top);
+  bottom: var(--mj-top);
+  border-left: 1px solid var(--background-modifier-border);
+}
+.mj-screen:not(.mj-narrow) .mj-bar { position: static; }
+.mj-screen:not(.mj-narrow) .mj-bar .mj-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 40px;
+  height: 64px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  font-size: 22px;
+}
+.mj-screen:not(.mj-narrow) .mj-bar .mj-nav:first-child { left: 6px; }
+.mj-screen:not(.mj-narrow) .mj-bar .mj-nav:nth-child(3) { right: 6px; }
+.mj-screen:not(.mj-narrow) .mj-bar .mj-nav:hover:not(:disabled) { background: var(--background-modifier-hover); color: var(--text-normal); }
+.mj-screen .mj-bar { border-top: 1px solid var(--background-modifier-border); }
+.mj-screen:not(.mj-narrow) .mj-meta { position: static; transform: none; }
+.mj-screen:not(.mj-narrow) .mj-meta:not(:empty)::before { content: "· "; }
 
 /* ----- page bar ----- */
 .mj-bar {

@@ -16,10 +16,19 @@
   .workspace-leaf-content { height: 100vh; display: flex; flex-direction: column; }
   .view-content { flex: 1; min-height: 0; }
   #tools { position: fixed; left: 8px; top: 8px; z-index: 10; display: flex; gap: 6px; }
+  body.dark {
+    --background-primary: #1e1e1e; --background-secondary: #262626; --background-modifier-border: #363636;
+    --background-modifier-hover: #333; --text-normal: #dadada; --text-muted: #a3a3a3; --text-faint: #666;
+    --text-accent: #a68af9; --font-text: system-ui, sans-serif; --code-background: transparent; --code-normal: #4ec9b0;
+    --code-string: #61d394; --code-keyword: #e06c75; --code-function: #e5c07b; --code-property: #56b6c2;
+    --code-comment: #777; --code-value: #c792ea; --code-operator: #e06c75; --code-punctuation: #aaa; background: #1e1e1e;
+  }
 </style>
 </head>
 <body>
 <div id="tools">
+  <select id="layout"><option value="journal">journal</option><option value="screen">obsidian view</option></select>
+  <label style="background:#fff8;padding:2px 4px"><input type="checkbox" id="dark"> dark</label>
   <select id="mode"><option value="auto">auto</option><option value="single">single</option><option value="double">double</option></select>
   <select id="tint"><option>cream</option><option>white</option><option>sepia</option><option>gray</option><option>night</option><option>theme</option></select>
   <select id="paper"><option>ruled</option><option>plain</option><option>dotted</option><option>grid</option></select>
@@ -33,6 +42,8 @@
   window.module = { exports: {} };
   window.require = () => new Proxy({ Platform: { isPhone: false } }, { get: (o, k) => (k in o ? o[k] : Stub) });
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" data-manual></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-powershell.min.js"></script>
 <script src="../main.js"></script>
 <script>
   const J = module.exports;
@@ -42,6 +53,7 @@
     onChange: () => { window.changes++; editor.setStatus('Edited'); },
     resolveImage: (src) => src,
     openLink: (href) => console.log('open', href),
+    highlight: (code, lang) => J.prismLines(window.Prism, code, lang),
   }, settings);
   const sample = [
     '# Field notes',
@@ -64,10 +76,21 @@
     '',
     '## Tuesday',
     '',
+    '```powershell',
+    '$p = "B:\\Astra\\Unreal\\v5\\Source\\AstraVan\\AstraVehicle.cpp"',
+    '$s = [System.IO.File]::ReadAllText($p)',
+    "$old = @'",
+    'void AAstraVehicle::BeginPlay() {',
+    "'@",
+    'if (-not $s.Contains($old)) { throw "block not found" }',
+    'Write-Host "fix applied"',
+    '```',
+    '',
   ].join('\n');
   editor.setText(sample, { resetHistory: true, caret: { line: Infinity, ch: Infinity } });
   window.editor = editor;
-  for (const id of ['mode', 'tint', 'paper']) {
+  document.getElementById('dark').addEventListener('change', (e) => { document.body.classList.toggle('dark', e.target.checked); editor.configure(settings); });
+  for (const id of ['mode', 'tint', 'paper', 'layout']) {
     document.getElementById(id).addEventListener('change', (e) => {
       settings[id === 'mode' ? 'pageMode' : id] = e.target.value;
       editor.configure(settings);

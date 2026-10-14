@@ -44,7 +44,11 @@ const FONTS = {
 const PAPERS = { plain: 'Plain', ruled: 'Ruled', dotted: 'Dot grid', grid: 'Squared' };
 const TINTS = { theme: 'Theme colours', white: 'White', cream: 'Cream', sepia: 'Sepia', gray: 'Gray', night: 'Night' };
 
+const LAYOUTS = { journal: 'Journal pages (fixed size, on paper)', screen: 'Obsidian view (columns fill the pane)' };
+
 const DEFAULT_SETTINGS = {
+  layout: 'journal',      // 'journal' | 'screen'
+  screenMaxWidth: 760,    // px — widest column in the Obsidian view (0 = no limit)
   pageSize: 'a5',
   customWidth: 148,       // mm, when pageSize === 'custom'
   customHeight: 210,      // mm
@@ -138,7 +142,7 @@ function computeKinds(lines) {
     }
     if (f && !(f[2][0] === '`' && f[3].includes('`'))) {
       fence = { ch: f[2][0], len: f[2].length };
-      out[i] = { type: 'fence', key: 'fence' };
+      out[i] = { type: 'fence', key: 'fence', lang: (f[3].trim().split(/\s+/)[0] || '').toLowerCase() };
       continue;
     }
     out[i] = lineKind(t);
@@ -220,8 +224,10 @@ function renderInline(s) {
 
 function renderLine(text, k, resolveImage) {
   switch (k.type) {
-    case 'blank':
     case 'code':
+      if (k.html != null) return k.html || '<br>';
+      return text ? escapeHtml(text) : '<br>';
+    case 'blank':
       return text ? escapeHtml(text) : '<br>';
     case 'fence':
     case 'pagebreak':
@@ -385,6 +391,56 @@ function pageGeometry(s) {
   return { W, H, fs, lh, m, colW, gap: 2 * m, top, contentH, bottom: H - top - contentH };
 }
 
+/* Obsidian view: the page is whatever the pane gives us, like MD Reader. */
+function screenGeometry(vw, vh, s, fs, phone) {
+  const narrow = vw < 600;
+  const side = narrow ? 12 : 56;            // room for the side page buttons
+  const gap = narrow ? 24 : 64;
+  const lh = Math.max(8, Math.round(fs * (Number.isFinite(s.lineHeight) ? Math.min(3, Math.max(1, s.lineHeight)) : 1.6)));
+  const avail = Math.max(120, vw - 2 * side);
+  let n = s.pageMode === 'single' ? 1 : s.pageMode === 'double' ? 2 : (!phone && avail >= 2 * 380 + gap ? 2 : 1);
+  let colW = Math.floor((avail - (n - 1) * gap) / n);
+  if (n === 2 && colW < 220) { n = 1; colW = avail; }
+  if (s.screenMaxWidth > 0) colW = Math.min(colW, Math.max(200, s.screenMaxWidth));
+  const top = vh < 500 ? 12 : 24;
+  const H = Math.max(lh * 3, Math.floor(vh));
+  const contentH = Math.max(lh * 2, H - 2 * top);
+  return { W: colW + gap, H, fs, lh, m: gap / 2, colW, gap, top, contentH, bottom: H - top - contentH, n, narrow };
+}
+
+const PRISM_ALIASES = {
+  ps1: 'powershell', ps: 'powershell', pwsh: 'powershell', sh: 'bash', shell: 'bash', zsh: 'bash', js: 'javascript',
+  ts: 'typescript', py: 'python', 'c++': 'cpp', cs: 'csharp', 'c#': 'csharp', md: 'markdown', yml: 'yaml',
+  html: 'markup', xml: 'markup', svg: 'markup', rb: 'ruby', rs: 'rust', kt: 'kotlin',
+};
+
+/* Highlights a fenced block with Prism and splits the result back into one HTML
+   string per source line (tokens may span lines, e.g. here-strings). The text of
+   each line is unchanged, only wrapped in token spans. */
+function prismLines(Prism, code, lang) {
+  if (!Prism || !Prism.languages || !Prism.tokenize) return null;
+  const grammar = Prism.languages[lang] || Prism.languages[PRISM_ALIASES[lang]];
+  if (!grammar) return null;
+  let tokens;
+  try { tokens = Prism.tokenize(code, grammar); } catch (e) { return null; }
+  const lines = [''];
+  const walk = (tok, cls) => {
+    if (typeof tok === 'string') {
+      tok.split('\n').forEach((part, i) => {
+        if (i) lines.push('');
+        if (part) lines[lines.length - 1] += cls ? '<span class="' + cls + '">' + escapeHtml(part) + '</span>' : escapeHtml(part);
+      });
+    } else if (Array.isArray(tok)) {
+      for (const t of tok) walk(t, cls);
+    } else if (tok) {
+      const own = 'token ' + tok.type + (tok.alias ? ' ' + [].concat(tok.alias).join(' ') : '');
+      walk(tok.content, cls ? cls + ' ' + own : own);
+    }
+  };
+  walk(tokens, '');
+  return lines;
+}
+
 /* ------------------------------------------------------------------------- */
 /*  PagedEditor — the journal page itself (DOM only, no Obsidian API)         */
 /* ------------------------------------------------------------------------- */
@@ -486,10 +542,29 @@ class PagedEditor {
 
   configure(settings) {
     this.settings = settings;
-    const g = this.geo = pageGeometry(settings);
-    const font = settings.fontFamily === 'custom'
+    this.screen = settings.layout === 'screen';
+    // the Obsidian view always wears the theme; paper and type are journal settings
+    const font = this.screen ? FONTS.theme.css : settings.fontFamily === 'custom'
       ? (settings.fontFamilyCustom || FONTS.serif.css)
       : (FONTS[settings.fontFamily] || FONTS.serif).css;
+    const tint = this.screen ? 'theme' : settings.tint;
+    this.root.style.setProperty('--mj-font', font);
+    const cls = this.root.classList;
+    cls.toggle('mj-screen', this.screen);
+    for (const t of Object.keys(TINTS)) cls.toggle('mj-tint-' + t, tint === t);
+    for (const p of Object.keys(PAPERS)) cls.toggle('mj-paper-' + p, !this.screen && settings.paper === p);
+    cls.toggle('mj-hide-syntax', !!settings.hideSyntax);
+    cls.toggle('mj-no-pnum', this.screen || !settings.pageNumbers);
+    cls.toggle('mj-h1-newpage', !!settings.headingNewPage);
+    this.content.spellcheck = settings.spellcheck !== false;
+    this.geo = null;
+    this.laidOut = false;
+    if (!this.screen) this.applyGeometry(pageGeometry(settings));
+    this.layout();
+  }
+
+  applyGeometry(g) {
+    this.geo = g;
     const st = this.root.style;
     st.setProperty('--mj-page-w', g.W + 'px');
     st.setProperty('--mj-page-h', g.H + 'px');
@@ -500,33 +575,44 @@ class PagedEditor {
     st.setProperty('--mj-content-h', g.contentH + 'px');
     st.setProperty('--mj-fs', g.fs + 'px');
     st.setProperty('--mj-lh', g.lh + 'px');
-    st.setProperty('--mj-font', font);
-    const cls = this.root.classList;
-    for (const t of Object.keys(TINTS)) cls.toggle('mj-tint-' + t, settings.tint === t);
-    for (const p of Object.keys(PAPERS)) cls.toggle('mj-paper-' + p, settings.paper === p);
-    cls.toggle('mj-hide-syntax', !!settings.hideSyntax);
-    cls.toggle('mj-no-pnum', !settings.pageNumbers);
-    cls.toggle('mj-h1-newpage', !!settings.headingNewPage);
-    this.content.spellcheck = settings.spellcheck !== false;
     this.content.querySelectorAll('img.mj-img').forEach((img) => this.fitImage(img, true));
-    this.layout();
   }
 
-  /* Scale the fixed-size page to the window and decide one page or a spread. */
+  /* Journal pages: scale the fixed-size page to the window, one page or a spread.
+     Obsidian view: the pane is the page, so the columns are re-cut to fit it. */
   layout() {
     const vw = this.viewport.clientWidth;
     const vh = this.viewport.clientHeight;
     if (!vw || !vh) return;
-    const g = this.geo;
-    const pad = vw < 520 ? 8 : 28;
-    const aw = Math.max(50, vw - 2 * pad);
-    const ah = Math.max(50, vh - 2 * pad);
-    const single = Math.min(aw / g.W, ah / g.H);
-    const double = Math.min(aw / (2 * g.W), ah / g.H);
-    const mode = this.settings.pageMode;
-    let n = mode === 'single' ? 1 : mode === 'double' ? 2 : (double >= 0.8 * single && !(Platform && Platform.isPhone) ? 2 : 1);
-    const scale = Math.min(n === 2 ? double : single, 3);
+    const phone = !!(Platform && Platform.isPhone);
     const firstPage = this.spread * this.n;
+    let n;
+    let scale;
+    let reflowed = false;
+    if (this.screen) {
+      const fs = parseFloat(getComputedStyle(this.root).getPropertyValue('--font-text-size')) || 16;
+      const g = screenGeometry(vw, vh, this.settings, fs, phone);
+      const old = this.geo;
+      if (!old || old.W !== g.W || old.H !== g.H || old.colW !== g.colW || old.lh !== g.lh || old.fs !== g.fs) {
+        this.applyGeometry(g);
+        reflowed = !!old;
+      }
+      this.root.classList.toggle('mj-narrow', g.narrow);
+      n = g.n;
+      scale = 1;
+    } else {
+      const g = this.geo;
+      this.root.classList.remove('mj-narrow');
+      const pad = vw < 520 ? 8 : 28;
+      const aw = Math.max(50, vw - 2 * pad);
+      const ah = Math.max(50, vh - 2 * pad);
+      const single = Math.min(aw / g.W, ah / g.H);
+      const double = Math.min(aw / (2 * g.W), ah / g.H);
+      const mode = this.settings.pageMode;
+      n = mode === 'single' ? 1 : mode === 'double' ? 2 : (double >= 0.8 * single && !phone ? 2 : 1);
+      scale = Math.min(n === 2 ? double : single, 3);
+    }
+    const g = this.geo;
     this.n = n;
     this.scale = scale;
     this.root.classList.toggle('mj-double', n === 2);
@@ -540,7 +626,43 @@ class PagedEditor {
     this.spread = Math.floor(firstPage / n);
     this.laidOut = true;
     this.measure();
-    if (this._revealPending) { this._revealPending = false; this.revealCaret(false); }
+    // pages were re-cut (Obsidian view resized): stay with the caret, not the page number
+    if (this._revealPending || reflowed) { this._revealPending = false; this.revealCaret(false); }
+  }
+
+  /* Repaint every line (e.g. once code highlighting becomes available). */
+  repaint() {
+    for (const el of this.lineEls) el._mjKey = null;
+    this.syncDOM();
+    if (this.sel && this.hasFocus()) this.setSelection(this.sel.anchor, this.sel.head);
+    this.measure();
+  }
+
+  /* Fenced blocks with a language get Prism token spans, one HTML string per line. */
+  highlightCode(lines, kinds) {
+    const hl = this.host.highlight;
+    if (!hl) return;
+    const cache = this._hlCache || (this._hlCache = new Map());
+    for (let i = 0; i < kinds.length; i++) {
+      const k = kinds[i];
+      if (k.type !== 'fence' || !k.lang) continue;
+      let j = i + 1;
+      while (j < kinds.length && kinds[j].type === 'code') j++;
+      if (j > i + 1) {
+        const code = lines.slice(i + 1, j).join('\n');
+        const ck = k.lang + '\u0000' + code;
+        let html = cache.get(ck);
+        if (html === undefined) {
+          html = hl(code, k.lang) || null;
+          cache.set(ck, html);
+          if (cache.size > 64) cache.delete(cache.keys().next().value);
+        }
+        if (html && html.length === j - i - 1) {
+          for (let x = i + 1; x < j; x++) kinds[x] = { type: 'code', key: 'code\u0001' + html[x - i - 1], html: html[x - i - 1] };
+        }
+      }
+      i = j - 1;
+    }
   }
 
   pageOfRect(r) {
@@ -590,6 +712,7 @@ class PagedEditor {
   }
 
   showSpread(s, animate, silent) {
+    if (!this.geo) return;
     const spreads = this.spreadCount();
     s = Math.max(0, Math.min(s, spreads - 1));
     const changed = s !== this.spread || !this._shown;
@@ -687,6 +810,7 @@ class PagedEditor {
     }
     this.rendered = neu.slice();
     const kinds = computeKinds(neu);
+    this.highlightCode(neu, kinds);
     for (let i = 0; i < neu.length; i++) {
       const el = this.lineEls[i];
       el._mjIdx = i;
@@ -706,6 +830,7 @@ class PagedEditor {
 
   fitImage(img, quiet) {
     const g = this.geo;
+    if (!g) return;
     const nw = img.naturalWidth;
     const nh = img.naturalHeight;
     if (!nw || !nh) return;
@@ -1334,10 +1459,12 @@ class JournalView extends ItemView {
       resolveImage: (link) => this.resolveImage(link),
       openLink: (href, newLeaf) => this.openLink(href, newLeaf),
       saveAttachment: (file) => this.saveAttachment(file),
+      highlight: (code, lang) => prismLines(this.plugin.prism, code, lang),
     };
     this.editor = new PagedEditor(this.contentEl, host, this.plugin.settings);
     this.addAction('pencil', 'Edit as Markdown', () => this.plugin.switchLeaf(this.leaf, 'markdown'));
     this.addAction('type', 'Journal appearance', () => new AppearanceModal(this.app, this.plugin).open());
+    this.addAction('monitor', 'Switch between journal pages and Obsidian view', () => this.plugin.toggleLayout());
     this.registerEvent(this.app.vault.on('modify', (f) => { if (f === this.file) this.onExternalModify(); }));
     this.registerEvent(this.app.vault.on('delete', (f) => { if (f === this.file) { this.dirty = false; this.leaf.detach(); } }));
     this.registerEvent(this.app.vault.on('rename', (f, oldPath) => {
@@ -1490,6 +1617,25 @@ function addAppearanceSettings(el, plugin, redisplay) {
   const s = plugin.settings;
   const apply = async () => { await plugin.saveSettings(); plugin.refreshViews(); };
 
+  new Setting(el).setName('Layout').setDesc('Journal pages are a fixed size on paper. The Obsidian view fills the pane in your theme, like MD Reader — still editable.')
+    .addDropdown((d) => d.addOptions(LAYOUTS).setValue(s.layout).onChange(async (v) => { s.layout = v; await apply(); redisplay(); }));
+  if (s.layout === 'screen') {
+    new Setting(el).setName('Columns').setDesc('Auto shows two columns when the pane is wide enough.')
+      .addDropdown((d) => d.addOptions({ auto: 'Auto', single: 'One column', double: 'Two columns' })
+        .setValue(s.pageMode).onChange(async (v) => { s.pageMode = v; await apply(); }));
+    new Setting(el).setName('Max column width').setDesc('Pixels. 0 = as wide as the pane allows.')
+      .addSlider((sl) => sl.setLimits(0, 1400, 20).setValue(s.screenMaxWidth).setDynamicTooltip()
+        .onChange(async (v) => { s.screenMaxWidth = v; await apply(); }));
+    new Setting(el).setName('Line spacing')
+      .addSlider((sl) => sl.setLimits(1.2, 2.4, 0.05).setValue(s.lineHeight).setDynamicTooltip()
+        .onChange(async (v) => { s.lineHeight = v; await apply(); }));
+    new Setting(el).setName('Hide Markdown marks').setDesc('Show **, # and links as formatting except on the line you are writing.')
+      .addToggle((t) => t.setValue(s.hideSyntax).onChange(async (v) => { s.hideSyntax = v; await apply(); }));
+    new Setting(el).setName('New page for each top-level heading')
+      .addToggle((t) => t.setValue(s.headingNewPage).onChange(async (v) => { s.headingNewPage = v; await apply(); }));
+    return;
+  }
+
   new Setting(el).setName('Page size').setDesc('The page stays this size whatever the window: it is scaled to fit, so the text never re-flows.')
     .addDropdown((d) => {
       for (const [k, v] of Object.entries(PAGE_SIZES)) d.addOption(k, v.label);
@@ -1583,6 +1729,10 @@ class MdJournalPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
     this.registerView(VIEW_TYPE_JOURNAL, (leaf) => new JournalView(leaf, this));
+    // Obsidian's own Prism, for code blocks like the reading view's
+    if (obsidian.loadPrism) {
+      obsidian.loadPrism().then((p) => { this.prism = p; this.refreshViews(true); }).catch(() => {});
+    }
     this.addRibbonIcon('book-open', 'Open journal', () => this.openJournal());
 
     this.addCommand({ id: 'open-journal', name: 'Open journal', callback: () => this.openJournal() });
@@ -1644,6 +1794,7 @@ class MdJournalPlugin extends Plugin {
       });
     }
     this.addCommand({ id: 'appearance', name: 'Journal appearance', callback: () => new AppearanceModal(this.app, this).open() });
+    this.addCommand({ id: 'toggle-layout', name: 'Switch between journal pages and Obsidian view', callback: () => this.toggleLayout() });
 
     this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
       if (!(file instanceof TFile) || file.extension !== 'md') return;
@@ -1660,10 +1811,19 @@ class MdJournalPlugin extends Plugin {
 
   async saveSettings() { await this.saveData(this.settings); }
 
-  refreshViews() {
+  refreshViews(repaint) {
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_JOURNAL)) {
-      if (leaf.view && leaf.view.editor) leaf.view.editor.configure(this.settings);
+      const ed = leaf.view && leaf.view.editor;
+      if (!ed) continue;
+      ed.configure(this.settings);
+      if (repaint) ed.repaint();
     }
+  }
+
+  async toggleLayout() {
+    this.settings.layout = this.settings.layout === 'screen' ? 'journal' : 'screen';
+    await this.saveSettings();
+    this.refreshViews();
   }
 
   activeJournal() {
@@ -1712,5 +1872,5 @@ module.exports.default = MdJournalPlugin;
 Object.assign(module.exports, {
   PagedEditor, JournalView, DEFAULT_SETTINGS, PAGE_SIZES, splitFrontmatter, computeKinds, lineKind,
   renderInline, renderLine, continuationPrefix, prevBoundary, nextBoundary, prevWordStart, nextWordEnd,
-  domToLines, pageGeometry, countWords,
+  domToLines, pageGeometry, screenGeometry, prismLines, countWords,
 });

@@ -102,4 +102,31 @@ test('page geometry keeps the writing on whole lines', () => {
   }
 });
 
+test('Obsidian view geometry fills the pane', () => {
+  const s = { ...J.DEFAULT_SETTINGS, layout: 'screen' };
+  const wide = J.screenGeometry(1700, 800, s, 16, false);
+  assert.equal(wide.n, 2);
+  assert.ok(wide.colW <= s.screenMaxWidth && wide.W === wide.colW + wide.gap);
+  assert.ok(wide.n * wide.colW + (wide.n - 1) * wide.gap <= 1700);
+  assert.equal(wide.top + wide.contentH + wide.bottom, wide.H);
+  assert.equal(J.screenGeometry(700, 800, s, 16, false).n, 1);
+  assert.equal(J.screenGeometry(1700, 800, s, 16, true).n, 1);
+  assert.equal(J.screenGeometry(1700, 800, { ...s, screenMaxWidth: 0 }, 16, false).colW, Math.floor((1700 - 112 - 64) / 2));
+});
+
+test('code highlighting keeps each line\'s text', () => {
+  // a tiny Prism stand-in: one token that spans a line break
+  const Prism = {
+    languages: { powershell: {} },
+    tokenize: (code) => [{ type: 'variable', content: '$s' }, ' = ', { type: 'string', content: ["@'\nhere", { type: 'x', content: '<b>' }, "\n'@"] }],
+  };
+  const code = "$s = @'\nhere<b>\n'@";
+  const lines = J.prismLines(Prism, code, 'ps1');
+  assert.equal(lines.length, 3);
+  assert.deepEqual(lines.map(textOf), code.split('\n'));
+  assert.match(lines[1], /token string token x/);
+  assert.equal(J.prismLines(Prism, code, 'cobol'), null);
+  assert.equal(J.computeKinds(['```PowerShell extra', 'x', '```'])[0].lang, 'powershell');
+});
+
 console.log('logic: ' + passed + ' passed');

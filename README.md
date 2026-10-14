@@ -25,7 +25,16 @@ editable.
   one page when it is narrow. You can also force either mode.
 - **Paper:** ruled, dot grid, squared or plain, in white, cream, sepia, gray, night or your
   theme's colours. Every line, headings included, takes a whole number of rulings, so the
-  writing stays on the lines.
+  writing stays on the lines. Big headings sit in a blank band, like the title space of a
+  journal page, so the ruling never runs through them.
+- **Obsidian view.** A second layout that looks like MD Reader: the columns fill the pane
+  in your theme's colours and font, with page buttons at the sides. It is still fully
+  editable and still flows onto the next page. The page is cut to fit the pane, so page
+  breaks move when you resize, and the view keeps the caret's place. Switch layouts with
+  the monitor button in the header, the **Switch between journal pages and Obsidian view**
+  command, or the **Layout** setting.
+- **Highlighted code blocks.** Fenced code with a language is coloured by Obsidian's own
+  Prism, as in the reading view.
 - **Live preview.** `**bold**`, `*italic*`, headings, links, highlights and tags show as
   formatting. Their Markdown marks appear only on the line you are writing. Bullets and
   checkboxes are drawn in place, and you can click a checkbox to tick it.
@@ -69,6 +78,7 @@ editable.
 | Insert page break | Adds a break, so the writing continues on the next page. |
 | Next page / Previous page | Turns the pages. |
 | Journal appearance | Page size, paper, colours and type. |
+| Switch between journal pages and Obsidian view | Toggles the layout. |
 
 ## Settings
 
@@ -79,6 +89,8 @@ editable.
 | Open in | New tab, current tab or split. |
 | Date heading format | Moment.js format used by *Insert date heading*. |
 | Spellcheck, page-turn animation | On or off. |
+| Layout | Journal pages (fixed size, on paper) or Obsidian view (columns fill the pane). |
+| Columns, max column width | Obsidian view only: one or two columns, and how wide they may get. |
 | Page size | A6, B6, A5, half letter, B5, A4 or custom (mm). |
 | Pages | Auto, one page or two-page spread. |
 | Paper, paper colour | Ruled, dot grid, squared or plain; theme, white, cream, sepia, gray or night. |
